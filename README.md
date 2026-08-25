@@ -1,3 +1,6 @@
+<img width="1254" height="751" alt="image" src="https://github.com/user-attachments/assets/36ff8e3c-982f-4370-b645-ff10211c9401" />
+
+
 # DeepSeek Harness 桌面封装（跨平台）
 
 DSH（DeepSeek Harness）的桌面窗口壳：**无边框窗口(macOS) / 标准窗口(Windows)**, 打开即连本机 dsh 服务(端口 3080), 支持搜索/缩放/右键菜单/记住窗口位置。
@@ -9,6 +12,7 @@ DSH（DeepSeek Harness）的桌面窗口壳：**无边框窗口(macOS) / 标准�
 - 跨平台: macOS(无边框) + Windows(标准窗口)
 - 记住上次窗口位置和大小（关闭/移动/缩放自动保存, 屏幕外自动回落）
 - 页面内搜索 Ctrl/Cmd+F · 缩放 Ctrl/Cmd± · 开发者工具 F12
+- 左下角usagecard在隔壁仓库
 
 **工作区增强（桌面原生能力）**
 
