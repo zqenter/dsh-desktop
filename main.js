@@ -7,7 +7,7 @@
 'use strict';
 
 const { app, BrowserWindow, Menu, clipboard, ipcMain, shell, screen } = require('electron');
-const { spawn } = require('child_process');
+const { spawn, exec } = require('child_process');
 const http = require('http');
 const path = require('path');
 const fs = require('fs');
@@ -236,6 +236,9 @@ app.whenReady().then(async () => {
     } else if (mod && key === '0') {
       event.preventDefault()
       win.webContents.setZoomLevel(0)
+    } else if (mod && key === 'r') {
+      event.preventDefault()
+      win.webContents.reload()
     } else if (input.key === 'F12' || (mod && input.key === 'I')) {
       event.preventDefault()
       win.webContents.toggleDevTools()
@@ -252,8 +255,95 @@ app.whenReady().then(async () => {
   win.on('resize', () => saveWindowState(win));
   win.on('move', () => saveWindowState(win));
   win.on('close', () => saveWindowState(win, true));
+
+  // 页面加载后注入文件夹右键检测
+  win.webContents.on('did-finish-load', () => {
+    win.webContents.executeJavaScript(FOLDER_MENU_JS).catch(() => {});
+  });
+
+  setupAppMenu(win);
   win.loadURL(URL);
 });
+
+// ---------- 文件夹右键菜单 (页面检测到路径后调用) ----------
+ipcMain.on('dsh-folder-menu', (event, folderPath) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win) return;
+  const isMac = process.platform === 'darwin';
+  Menu.buildFromTemplate([
+    { label: '打开目标文件夹', click: () => { shell.openPath(folderPath); } },
+    { label: isMac ? '在访达中显示' : '在资源管理器中显示', click: () => shell.showItemInFolder(folderPath) },
+    { type: 'separator' },
+    { label: '复制路径', click: () => clipboard.writeText(folderPath) },
+  ]).popup({ window: win });
+});
+
+// ---------- 重启 DSH 服务 (杀掉 3080 端口的进程再启动) ----------
+function killPort(port) {
+  return new Promise((resolve) => {
+    const cmd = process.platform === 'win32'
+      ? 'netstat -ano | findstr :' + port
+      : 'lsof -ti tcp:' + port;
+    exec(cmd, (err, stdout) => {
+      const pids = String(stdout || '').trim().split(/\s+/).filter(Boolean);
+      for (const pid of pids) {
+        try { process.kill(Number(pid), 'SIGTERM'); } catch (e) {}
+      }
+      resolve();
+    });
+  });
+}
+async function restartServer() {
+  await killPort(3080);
+  await new Promise((r) => setTimeout(r, 800));
+  await startServer();
+}
+
+// ---------- 页面注入: 右键文件夹检测 (title/data-path/aria-label 里的路径) ----------
+const FOLDER_MENU_JS = `
+(() => {
+  if (window.__dshFolderHook) return;
+  window.__dshFolderHook = true;
+  const PATH_RE = /^(~|\/|[A-Za-z]:[\\/]|\\)/;
+  document.addEventListener('contextmenu', (e) => {
+    let el = e.target;
+    for (let i = 0; el && i < 7; i++, el = el.parentElement) {
+      const cand = el.getAttribute && (el.getAttribute('data-path') || el.getAttribute('title') || el.getAttribute('aria-label') || el.getAttribute('data-tooltip'));
+      if (cand) {
+        const p = String(cand).replace(/^[a-z]+:\s*/i, '').trim();
+        if (PATH_RE.test(p) && p.length > 1) {
+          e.preventDefault();
+          window.dshShell && window.dshShell.showFolderMenu(p);
+          return;
+        }
+      }
+    }
+  });
+})()
+`;
+
+// ---------- 应用菜单 (macOS 菜单栏 / Windows 窗口菜单) ----------
+function setupAppMenu(win) {
+  const isMac = process.platform === 'darwin';
+  const template = [
+    ...(isMac ? [{ role: 'appMenu' }] : []),
+    {
+      label: 'DSH',
+      submenu: [
+        { label: '打开 DSH 数据目录 (~/.dsh)', click: () => { shell.openPath(path.join(os.homedir(), '.dsh')); } },
+        { label: '复制服务地址', click: () => clipboard.writeText(URL) },
+        { type: 'separator' },
+        { label: '重新加载页面', role: 'reload' },
+        { label: '开发者工具', role: 'toggleDevTools' },
+        { type: 'separator' },
+        { label: '重启 DSH 服务', click: () => { restartServer(); } },
+        { type: 'separator' },
+        isMac ? { role: 'quit', label: '退出 DeepSeek Harness' } : { role: 'quit', label: '退出' },
+      ],
+    },
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();

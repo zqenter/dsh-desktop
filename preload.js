@@ -6,6 +6,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('dshShell', {
   find: (text, forward) => ipcRenderer.send('dsh-find', { text, forward }),
   stopFind: () => ipcRenderer.send('dsh-find-stop'),
+  // 文件夹右键菜单: 打开目标文件夹 / 在访达显示 / 复制路径
+  showFolderMenu: (path) => ipcRenderer.send('dsh-folder-menu', path),
 });
 
 // 拖拽区 + 侧边栏安全距离 (仅这两项, 保持界面原样)
