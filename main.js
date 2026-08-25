@@ -30,6 +30,27 @@ function resolveNode() {
 const NODE_BIN = resolveNode();
 const PRELOAD = path.join(__dirname, 'preload.js');
 
+// 应用图标: Windows/Linux 窗口与任务栏用 icon.ico; macOS 无边框窗口不需要
+// (打包成 .app 时由 electron-packager 的 --icon 换成 icon.icns)
+const APP_ICON = path.join(__dirname, 'assets', 'icon.ico');
+
+// ---------- 单实例锁 ----------
+// 重复双击/启动时聚焦已有窗口, 而不是再开一个实例
+// (之前没有锁, 连开几次会叠出多个 DSH 进程, 任务栏还容易显示成 Electron)
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+app.on('second-instance', () => {
+  const win = BrowserWindow.getAllWindows()[0];
+  if (win) {
+    if (win.isMinimized()) win.restore();
+    win.focus();
+  }
+});
+
+// 应用显示名: 任务栏/跳转列表显示 "DeepSeek Harness" 而不是 Electron;
+// 同时固定 userData 目录, 窗口状态文件位置保持不变 (%APPDATA%\dsh-desktop)
+app.setName('DeepSeek Harness');
+app.setPath('userData', path.join(app.getPath('appData'), 'dsh-desktop'));
+
 // ---------- 窗口状态记忆（记住上次的位置和大小, 自动适配平台目录） ----------
 const STATE_FILE = path.join(app.getPath('userData'), 'window-state.json');
 
@@ -80,27 +101,49 @@ function checkServer() {
 
 function startServer() {
   return new Promise((resolve) => {
+    let settled = false;
+    const done = (child, reason) => {
+      if (settled) return;
+      settled = true;
+      if (!child) console.error('[dsh-desktop] 服务启动失败:', reason || '未知错误');
+      resolve(child); // 成功返回 child(供 ensureServer 监听退出), 失败返回 null
+    };
+    let child;
     try {
-      const child = spawn(NODE_BIN, ['apps/cli/lib/bin.js', 'web'], {
+      // --no-open: 服务由桌面版拉起时, 不再额外打开默认浏览器 (webui 就在本窗口里)
+      child = spawn(NODE_BIN, ['apps/cli/lib/bin.js', 'web', '--no-open'], {
         cwd: DSH_DIR,
         detached: true,
         stdio: 'ignore',
         windowsHide: true,
       });
-      child.unref();
-      resolve(true);
     } catch (e) {
-      resolve(false);
+      done(null, e.message);
+      return;
     }
+    // spawn 是异步的: node 不存在 / DSH_DIR 无效会触发 'error' 事件,
+    // 之前直接 resolve(true) 会让 ensureServer 白等 120 秒
+    child.once('error', (err) => done(null, err.message));
+    child.once('spawn', () => { child.unref(); done(child); });
+    // 兜底: 10 秒内没有完成 spawn 按失败处理
+    setTimeout(() => done(null, '启动超时'), 10000);
   });
 }
 
 async function ensureServer() {
+  // 1) 服务已在跑 → 直接连
   if (await checkServer()) return true;
-  await startServer();
+  // 2) 没在跑 → 自动后台启动服务 (detached, 关软件后服务保留)
+  const child = await startServer();
+  // 3) 启动本身失败 (node 不在 PATH / DSH_DIR 无效 / 入口缺失) → 不用再等
+  if (!child) return false;
+  // 4) 轮询等待端口就绪; 若服务进程提前退出(崩溃/端口被占)则快速失败
+  let exited = false;
+  child.once('exit', () => { exited = true; });
   for (let i = 0; i < 120; i++) {
     await new Promise((r) => setTimeout(r, 1000));
     if (await checkServer()) return true;
+    if (exited && i >= 4) return false; // 起来后 5 秒内就退出 = 起不来
   }
   return false;
 }
@@ -148,7 +191,19 @@ ipcMain.on('dsh-find-stop', (event) => {
 })
 
 // ---------- 主流程 ----------
+// Windows: 固定 AppUserModelId, 任务栏/开始菜单才能正确显示应用图标并独立分组
+// (不设置时 Electron 默认用 process.execPath, 图标会退回默认 Electron 图标)
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.deepseek.dsh-desktop');
+}
+
 app.whenReady().then(async () => {
+  // 单实例: 拿不到锁说明已有实例在跑, 直接退出 (由 second-instance 把已有窗口拉起来)
+  if (!gotSingleInstanceLock) {
+    app.quit();
+    return;
+  }
+
   const savedWin = loadWindowState();
   const win = new BrowserWindow({
     width: savedWin ? savedWin.width : 1240,
@@ -159,7 +214,9 @@ app.whenReady().then(async () => {
     minHeight: 600,
     title: 'DeepSeek Harness',
     backgroundColor: THEME_BG,
-    // macOS: 无边框(隐藏标题栏, 保留红绿灯); Windows: 标准窗口(保留最小化/关闭按钮)
+    // Windows/Linux: 标准窗口 + 应用图标(窗口/任务栏不再显示默认 Electron 图标);
+    // macOS: 无边框(隐藏标题栏, 保留红绿灯), 图标由打包时的 .icns 提供
+    ...(process.platform !== 'darwin' ? { icon: APP_ICON } : {}),
     titleBarStyle: process.platform === 'darwin' ? 'hidden' : 'default',
     ...(process.platform === 'darwin' ? { trafficLightPosition: { x: 12, y: 12 } } : {}),
     webPreferences: {
@@ -169,6 +226,9 @@ app.whenReady().then(async () => {
       preload: PRELOAD,
     },
   });
+
+  // 窗口标题固定为应用名 (页面标题不再覆盖), 任务栏/Alt-Tab 显示稳定的 "DeepSeek Harness"
+  win.on('page-title-updated', (e) => e.preventDefault());
 
   win.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
@@ -247,8 +307,12 @@ app.whenReady().then(async () => {
 
   const ok = await ensureServer();
   if (!ok) {
+    // 启动失败页: 带上 DSH_DIR 与排查提示, 方便 Windows 上定位问题
+    const hint = process.platform === 'win32'
+      ? '请确认该目录已完成构建 (pnpm build:lib), 且 node 已加入 PATH'
+      : '请确认该目录已完成构建 (pnpm build:lib), 且已安装 Node.js';
     win.loadURL('data:text/html;charset=utf-8,' +
-      encodeURIComponent('<html><body style="background:#2C2C2E;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh">dsh 服务未能启动, 请确认 DSH_DIR 指向已构建的 deepseek-harness 目录, 并已安装 Node.js</body></html>'));
+      encodeURIComponent(`<html><body style="background:#2C2C2E;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;padding:24px;text-align:center"><div>dsh 服务未能启动<br><br>DSH_DIR: ${DSH_DIR}<br>${hint}</div></body></html>`));
     return;
   }
 

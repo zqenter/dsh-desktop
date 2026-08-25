@@ -5,6 +5,25 @@
 
 DSH（DeepSeek Harness）的桌面窗口壳：**无边框窗口(macOS) / 标准窗口(Windows)**, 打开即连本机 dsh 服务(端口 3080), 支持搜索/缩放/右键菜单/记住窗口位置。
 
+## 获取方式（Windows）
+
+**方式一：绿色版（推荐，免安装）**
+
+到 Releases 下载 `DSH-win64-绿色版.zip`，解压后直接双击 `DSH.exe` 即可运行。
+（绿色版已内置 electron 运行时，**无需安装 Node.js 也能启动窗口**；但本机仍需装好 dsh 服务端 `~/deepseek-harness`，见「前置要求」）
+
+**方式二：git clone 源码版**
+
+```bat
+git clone https://github.com/zqenter/dsh-desktop.git
+cd dsh-desktop
+npm install
+start.bat              :: 或: npx electron .
+```
+
+源码版需要本机装 Node.js ≥ 22.19。
+
+
 ## 特性
 
 **窗口与体验**
@@ -70,6 +89,17 @@ npm install
 start.bat              :: 或: npx electron .
 ```
 
+## Windows 打包 + 桌面快捷方式
+
+```bat
+cd dsh-desktop
+npm run pack          :: 生成 DSH-win32-x64\DSH.exe (应用图标取自 assets\icon.ico)
+npm run shortcut      :: 在桌面创建带图标的 "DeepSeek Harness" 快捷方式
+```
+
+应用图标在 `assets/`（`icon.ico` Windows / `icon.icns` macOS / `icon.png` 通用, 由官方鱼标生成）,
+需要重新生成时运行 `npm run icons`（依赖 sharp, 脚本会自动在 `~/deepseek-harness` 的 pnpm store 里查找）。
+
 ## 环境变量（可选）
 
 | 变量 | 默认 | 说明 |
@@ -85,5 +115,6 @@ start.bat              :: 或: npx electron .
 
 ## 说明
 
-- 关闭窗口后 dsh 服务进程保留（detached）, 下次打开秒连
-- macOS 无边框窗口（隐藏标题栏）; Windows 标准窗口（保留最小化/关闭按钮）
+- 启动时自动检测本机 dsh 服务 (127.0.0.1:3080), 没在运行就自动后台启动; 关闭窗口后服务进程保留（detached）, 下次打开秒连
+- 桌面版拉起服务时带 `--no-open`: 只在 Electron 窗口里展示 webui, 不会额外弹出默认浏览器
+- macOS 无边框窗口（隐藏标题栏, 顶部拖拽区 + 红绿灯避让样式只在 macOS 注入）; Windows 标准窗口（侧边栏 logo 保持默认高度, 不注入额外内边距）

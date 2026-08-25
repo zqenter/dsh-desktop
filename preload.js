@@ -11,7 +11,9 @@ contextBridge.exposeInMainWorld('dshShell', {
   openPath: (path) => ipcRenderer.send('dsh-open-path', path),
 });
 
-// 拖拽区 + 侧边栏安全距离 (仅这两项, 保持界面原样)
+// macOS 无边框窗口专属样式 (顶部拖拽区 + 红绿灯避让):
+// Windows 是标准窗口(自带标题栏), 注入反而会把侧边栏 logo 顶下去,
+// 所以只在 darwin 注入, 其他平台保持界面原样(logo 默认高度)。
 const WINDOW_CSS = `
   /* 顶部 34px 可拖动窗口 */
   body::before {
@@ -48,6 +50,9 @@ const WINDOW_CSS = `
 `;
 
 function injectWindowCss() {
+  // 仅 macOS: 无边框窗口需要拖拽区并给左上红绿灯让位;
+  // Windows/Linux 标准窗口不注入, 侧边栏 logo 保持默认高度。
+  if (process.platform !== 'darwin') return;
   try {
     const style = document.createElement('style');
     style.textContent = WINDOW_CSS;

@@ -2,3 +2,7 @@ node_modules/
 dist/
 *.log
 .DS_Store
+# electron-packager 输出 (npm run pack)
+DSH-win32-*/
+DSH-darwin-*/
+DSH-linux-*/

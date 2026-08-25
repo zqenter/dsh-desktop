@@ -5,7 +5,9 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "pack": "electron-packager . DSH --overwrite --asar"
+    "icons": "node scripts/generate-icons.js",
+    "pack": "electron-packager . DSH --overwrite --asar --icon=assets/icon",
+    "shortcut": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/create-desktop-shortcut.ps1"
   },
   "devDependencies": {
     "electron": "^33.2.0",
