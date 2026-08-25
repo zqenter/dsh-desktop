@@ -278,6 +278,11 @@ ipcMain.on('dsh-folder-menu', (event, folderPath) => {
   ]).popup({ window: win });
 });
 
+// ---------- 打开本地路径 (网页端菜单调用) ----------
+ipcMain.on('dsh-open-path', (_event, folderPath) => {
+  if (typeof folderPath === 'string' && folderPath) shell.openPath(folderPath);
+});
+
 // ---------- 重启 DSH 服务 (杀掉 3080 端口的进程再启动) ----------
 function killPort(port) {
   return new Promise((resolve) => {
