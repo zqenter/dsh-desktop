@@ -346,6 +346,32 @@ function setupAppMenu(win) {
         isMac ? { role: 'quit', label: '退出 DeepSeek Harness' } : { role: 'quit', label: '退出' },
       ],
     },
+    // 编辑菜单: macOS 上 ⌘C/⌘V/⌘X/⌘A/⌘Z 等编辑快捷键由菜单 role 分发,
+    // 没有 Edit 菜单时这些组合键在无边框窗口里传不进页面。
+    {
+      label: '编辑',
+      submenu: [
+        { role: 'undo', label: '撤销' },
+        { role: 'redo', label: '重做' },
+        { type: 'separator' },
+        { role: 'cut', label: '剪切' },
+        { role: 'copy', label: '复制' },
+        { role: 'paste', label: '粘贴' },
+        { type: 'separator' },
+        { role: 'selectAll', label: '全选' },
+      ],
+    },
+    {
+      label: '视图',
+      submenu: [
+        { role: 'resetZoom', label: '实际大小' },
+        { role: 'zoomIn', label: '放大' },
+        { role: 'zoomOut', label: '缩小' },
+        { type: 'separator' },
+        { role: 'togglefullscreen', label: '切换全屏' },
+      ],
+    },
+    { role: 'windowMenu' },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
